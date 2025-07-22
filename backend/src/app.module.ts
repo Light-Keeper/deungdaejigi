@@ -3,6 +3,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+// --- 1. 방금 만든 TestModule을 가져옵니다. ---
+import { TestModule } from '../test/test.module';
 
 // AppModule은 NestJS 애플리케이션의 루트 모듈로, 다른 모듈들을 가져오고 설정합니다.
 // 이 모듈은 .env 파일을 읽고 MongoDB에 연결하는 설정을 포함합니다.
@@ -21,6 +23,8 @@ import { AppService } from './app.service';
       }),
       inject: [ConfigService],
     }),
+    // --- 2. imports 배열에 TestModule을 추가합니다. ---
+    TestModule,
   ],
   controllers: [AppController],
   providers: [AppService],
