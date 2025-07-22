@@ -1,0 +1,56 @@
+# ===================================================================
+# General & IDE (VSCode)
+# ===================================================================
+# 운영체제 및 IDE 관련 파일
+.DS_Store
+.vscode/
+*.swp
+*~
+Thumbs.db
+ehthumbs.db
+
+# ===================================================================
+# Node.js / Nest.js (backend)
+# ===================================================================
+# 생성된 폴더
+/backend/node_modules/
+/backend/dist/
+
+# 로그 파일
+/backend/npm-debug.log*
+/backend/yarn-debug.log*
+/backend/yarn-error.log*
+
+# 환경 변수 파일 (매우 중요)
+/backend/.env
+
+# ===================================================================
+# Flutter / Dart (frontend)
+# ===================================================================
+# 빌드 및 도구 관련 폴더
+/frontend/.dart_tool/
+/frontend/.packages
+/frontend/build/
+/frontend/.flutter-plugins
+/frontend/.flutter-plugins-dependencies
+
+# 잠금 파일
+/frontend/pubspec.lock
+
+# Android 관련 파일
+/frontend/android/.gradle/
+/frontend/android/local.properties
+/frontend/android/app/src/main/assets/flutter_assets
+/frontend/android/key.properties
+/frontend/android/.idea/
+/frontend/android/gradlew
+/frontend/android/gradlew.bat
+
+# iOS 관련 파일
+/frontend/ios/Pods/
+/frontend/ios/Podfile.lock
+/frontend/ios/.symlinks/
+/frontend/ios/Flutter/
+/frontend/ios/Runner/GeneratedPluginRegistrant.*
+/frontend/ios/Runner.xcworkspace/
+/frontend/ios/Runner.xcodeproj/
