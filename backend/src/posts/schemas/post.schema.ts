@@ -9,6 +9,7 @@ export class Post {
   // 💡 작성자 정보를 User 스키마와 연결합니다.
   // type: Types.ObjectId는 이 필드가 다른 문서의 고유 ID임을 나타냅니다.
   // ref: 'User'는 이 ID가 'User'라는 이름의 모델을 참조한다는 의미입니다.
+  //@TODO: Users 모듈 main 브랜치에 병합하면 이 주석 제거
   // @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   // author: User;
 
