@@ -13,33 +13,24 @@ export type UserDocument = User & Document;
   collection: 'users',
 })
 export class User {
-  // MongoDB의 기본 _id를 사용하므로 별도의 'id' 필드는 정의하지 않습니다.
-
-  // 사용자 로그인 ID 필드입니다. 필수로 고유해야 합니다.
   @Prop({ required: true, unique: true })
   username: string;
 
-  // 이메일 필드입니다. 이제 선택 사항이며 고유하지 않습니다.
+  @Prop({ required: true })
+  password: string;
+
   @Prop({ required: false, unique: true }) // email은 이제 선택 사항입니다.
   email?: string; // 선택 사항이므로 ?를 추가합니다.
 
-  // 비밀번호 필드입니다. required: true로 설정되어 있습니다.
-  @Prop({ required: true })
-  password: string; // 비밀번호는 해싱되어 저장됩니다.
-
-  // 닉네임 필드입니다. required: true로 설정되어 있습니다.
   @Prop({ required: true })
   nickname: string;
 
-  // 성별 필드입니다. 필수입니다.
-  @Prop({ required: true })
-  gender: string; // 예: 'male', 'female', 'other'
+  @Prop({ required: true, default: '비공개', enum: ['비공개', '남성', '여성'] })
+  gender: string; // 예: '남성', '여성', '비공개'
 
-  // 나이 필드입니다. 필수입니다.
   @Prop({ required: true })
   age: number;
 
-  // 사용자 역할 필드입니다. 기본값은 'user'입니다.
   @Prop({ default: 'user' })
   role: string; // 예: 'admin', 'user' 등
 }
