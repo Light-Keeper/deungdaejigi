@@ -1,34 +1,24 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Param } from '@nestjs/common';
 import { WelfareService } from './welfare.service';
-import { CreateWelfareDto } from './dto/create-welfare.dto';
-import { UpdateWelfareDto } from './dto/update-welfare.dto';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
+@ApiTags('Welfare')
 @Controller('welfare')
 export class WelfareController {
   constructor(private readonly welfareService: WelfareService) {}
 
-  @Post()
-  create(@Body() createWelfareDto: CreateWelfareDto) {
-    return this.welfareService.create(createWelfareDto);
-  }
-
   @Get()
-  findAll() {
-    return this.welfareService.findAll();
+  @ApiOperation({ summary: '신청 가능한 복지 목록 조회' })
+  @ApiResponse({ status: 200, description: '조회 성공' })
+  findAllAvailable() {
+    return this.welfareService.findAvailable();
   }
 
   @Get(':id')
+  @ApiOperation({ summary: '특정 복지 상세 조회' })
+  @ApiResponse({ status: 200, description: '조회 성공' })
+  @ApiResponse({ status: 404, description: '해당 복지를 찾을 수 없음' })
   findOne(@Param('id') id: string) {
-    return this.welfareService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateWelfareDto: UpdateWelfareDto) {
-    return this.welfareService.update(+id, updateWelfareDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.welfareService.remove(+id);
+    return this.welfareService.findOne(id);
   }
 }
