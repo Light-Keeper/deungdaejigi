@@ -3,18 +3,21 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-// --- 1. 방금 만든 TestModule을 가져옵니다. ---
+
 import { TestModule } from '../test/test.module';
 import { WelfareModule } from './welfare/welfare.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 // AppModule은 NestJS 애플리케이션의 루트 모듈로, 다른 모듈들을 가져오고 설정합니다.
 // 이 모듈은 .env 파일을 읽고 MongoDB에 연결하는 설정을 포함합니다.
 @Module({
   imports: [
-    // 1. .env 파일을 읽기 위한 ConfigModule 설정
+    //.env 파일을 읽기 위한 ConfigModule 설정
     ConfigModule.forRoot({
       isGlobal: true, // 모든 모듈에서 .env 변수를 사용할 수 있게 함
     }),
+
+    ScheduleModule.forRoot(), // 스케줄링 기능을 사용하기 위한 모듈
 
     // 2. MongoDB 연결 설정
     MongooseModule.forRootAsync({

@@ -1,8 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 
-@Schema({ timestamps: true, collection: 'welfare_services' })
-export class WelfareService {
+@Schema({ timestamps: true, collection: 'welfare' })
+export class Welfare {
   @Prop({ required: true })
   name: string; // 복지 이름
 
@@ -40,6 +40,5 @@ export class WelfareService {
   applicationEndDate: Date; // 신청 마감일
 }
 
-export type WelfareServiceDocument = HydratedDocument<WelfareService>;
-export const WelfareServiceSchema =
-  SchemaFactory.createForClass(WelfareService);
+export type WelfareDocument = HydratedDocument<Welfare>;
+export const WelfareSchema = SchemaFactory.createForClass(Welfare);

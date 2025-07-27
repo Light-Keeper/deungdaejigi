@@ -1,17 +1,14 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { HttpModule } from '@nestjs/axios';
 import { WelfareService } from './welfare.service';
 import { WelfareController } from './welfare.controller';
-import {
-  WelfareService as WelfareServiceModel,
-  WelfareServiceSchema,
-} from './schemas/welfare.schema';
+import { Welfare, WelfareSchema } from './schemas/welfare.schema';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([
-      { name: WelfareServiceModel.name, schema: WelfareServiceSchema },
-    ]),
+    MongooseModule.forFeature([{ name: Welfare.name, schema: WelfareSchema }]),
+    HttpModule,
   ],
   controllers: [WelfareController],
   providers: [WelfareService],
