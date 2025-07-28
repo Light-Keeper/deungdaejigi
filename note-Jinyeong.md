@@ -14,7 +14,7 @@
 - rename: 파일 혹은 폴더명을 수정만 한 경우
 - remove: 파일을 삭제만 한 경우
 
-> > > 요즘은 정보 압축을 위해 이모지(gitmoji)를 사용하는 커밋 컨벤션도 있습니다.
+> 요즘은 정보 압축을 위해 이모지(gitmoji)를 사용하는 커밋 컨벤션도 있습니다.
 
 ## [ Subject ] scope
 
@@ -38,6 +38,6 @@
 - 선택사항이며, 관련된 이슈를 언급합니다. Ex) Fixes: #1, #2
 - 주로 Closes(종료), Fixes(수정), Resolves(해결), Ref(참고), Related to(관련) 키워드를 사용합니다.
 
-> > > 저는 개인 저장소에 커밋할 때는 '[feat] XX 구현', '[fix] XX 수정' 등으로 간단하게 작성합니다.
+> 저는 개인 저장소에 커밋할 때는 '[feat] XX 구현', '[fix] XX 수정' 등으로 간단하게 작성합니다.
 
 출처: https://nohack.tistory.com/17 [lucid_dream:티스토리]
