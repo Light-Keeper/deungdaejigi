@@ -53,6 +53,9 @@ export class Welfare {
 
   @Prop({ type: Date, default: null })
   lastUpdated: Date; // 데이터 마지막 업데이트 날짜
+
+  // @Prop({ })
+  // classificationStatus: string; // 분류 상태 초기값 (새로운 항목은 검토 필요 상태로)
 }
 
 export type WelfareDocument = HydratedDocument<Welfare>;
