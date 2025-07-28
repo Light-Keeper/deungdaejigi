@@ -7,6 +7,9 @@ import { AppService } from './app.service';
 import { TestModule } from '../test/test.module';
 import { WelfareModule } from './welfare/welfare.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { AuthModule } from './auth/auth.module';
+import { UsersModule } from './users/users.module';
+import { MoodDiaryModule } from './mood-diary/mood-diary.module'; // 마음일기 모듈 추가
 
 // AppModule은 NestJS 애플리케이션의 루트 모듈로, 다른 모듈들을 가져오고 설정합니다.
 // 이 모듈은 .env 파일을 읽고 MongoDB에 연결하는 설정을 포함합니다.
@@ -30,6 +33,9 @@ import { ScheduleModule } from '@nestjs/schedule';
     // --- 2. imports 배열에 TestModule을 추가합니다. ---
     TestModule,
     WelfareModule,
+    AuthModule,
+    UsersModule,
+    MoodDiaryModule, // 마음일기 모듈 추가
   ],
   controllers: [AppController],
   providers: [AppService],
