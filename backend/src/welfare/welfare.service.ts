@@ -63,7 +63,7 @@ export class WelfareService {
   // 매월 1일 자정에 실행되는 크론 작업
   @Cron(CronExpression.EVERY_1ST_DAY_OF_MONTH_AT_MIDNIGHT)
   async handleCron() {
-    this.logger.debug('매월 1일 복지 정보 데이터 동기화를 시작합니다...');
+    this.logger.log('매월 1일 복지 정보 데이터 동기화를 시작합니다...');
 
     try {
       // 공공데이터포털에서 복지 정보 데이터를 가져옵니다.
@@ -86,8 +86,13 @@ export class WelfareService {
     params: Record<string, any>,
   ): Promise<{ rawData: any[]; totalCount: number }> {
     try {
+      const loggableParams = { ...params };
+      if (loggableParams.serviceKey) {
+        loggableParams.serviceKey = '**********************';
+      }
+
       this.logger.debug(
-        `API 호출: ${url} \nparams: ${JSON.stringify(params, null, 4)}`,
+        `API 호출: ${url} \nparams: ${JSON.stringify(loggableParams, null, 4)}`,
       );
 
       // API 요청
