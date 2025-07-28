@@ -1,3 +1,16 @@
+## Commit Message 기본 구조
+
+```
+#
+# Commit Message 기본 구조
+#
+<type>(<scope>): <subject>
+<blank line>
+<body>
+<blank line>
+(<footer>)
+```
+
 ## [ Subject ] type (커밋 종류)
 
 - feat: 새로운 기능 추가
