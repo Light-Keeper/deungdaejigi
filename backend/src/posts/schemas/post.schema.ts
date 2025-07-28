@@ -1,68 +1,183 @@
-// --- 필요한 모듈 및 클래스 가져오기 (Import) ---
+// src/posts/schemas/post.schema.ts
 
-// Prop, Schema, SchemaFactory 데코레이터를 @nestjs/mongoose 패키지에서 가져옵니다.
-// 이 데코레이터들은 Mongoose 스키마를 Nest.js 방식으로 쉽게 생성하도록 도와줍니다.
+/**
+ * 🗄️ 게시글 스키마 - JWT 인증 적용 버전
+ * 
+ * 🎯 역할:
+ * - MongoDB의 'posts' 컬렉션 구조 정의
+ * - 데이터 타입과 제약 조건 설정
+ * - 자동 필드 생성 및 관계 설정
+ * 
+ * 🔄 JWT 적용 후 변경사항:
+ * - userId 필드 추가: User 스키마와의 관계 설정
+ * - 보안 강화: 실제 사용자 ID로 작성자 추적 가능
+ */
+
+// 필요한 Mongoose 데코레이터 및 타입들 가져오기
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-
-// Mongoose 라이브러리에서 HydratedDocument와 Types를 가져옵니다.
-// HydratedDocument는 Mongoose가 데이터베이스에서 조회한 문서에 메소드 등을 추가한 객체의 타입입니다.
-// Types는 ObjectId와 같은 Mongoose의 특별한 데이터 타입을 사용하기 위해 필요합니다.
 import { HydratedDocument, Types } from 'mongoose';
 
-// --- 스키마 클래스 정의 ---
-
-// @Schema() 데코레이터는 Post 클래스가 데이터베이스의 'posts' 컬렉션과 매핑되는 스키마임을 선언합니다.
-// { timestamps: true } 옵션은 데이터가 생성되거나 업데이트될 때 자동으로 createdAt과 updatedAt 필드를 추가해줍니다.
+/**
+ * 🏷️ @Schema 데코레이터:
+ * 이 클래스를 MongoDB 컬렉션 스키마로 정의
+ * 
+ * ⚙️ 옵션 설명:
+ * - timestamps: true → createdAt, updatedAt 필드 자동 생성 및 관리
+ * 
+ * 📊 실제 MongoDB 컬렉션명: 'posts' (Post → posts로 자동 변환)
+ */
 @Schema({ timestamps: true })
-// Post 클래스를 선언합니다. 이 클래스의 구조가 곧 문서(document)의 구조가 됩니다.
 export class Post {
-  // @Prop() 데코레이터는 이 속성(property)이 데이터베이스 문서의 필드(field)임을 나타냅니다.
-  // required: true 옵션은 이 필드가 필수 값임을 의미합니다.
+  /**
+   * 🆔 사용자 ID 필드 (JWT 인증 적용으로 새로 추가)
+   * 
+   * 🔒 보안 강화 목적:
+   * - 게시글 작성자를 명확하게 식별
+   * - JWT 토큰에서 추출한 신뢰할 수 있는 사용자 ID 저장
+   * - 향후 권한 검증 시 사용 (수정/삭제 권한 확인)
+   * 
+   * ⚙️ 필드 설정:
+   * @Prop({
+   *   type: Types.ObjectId,    // MongoDB ObjectId 타입
+   *   ref: 'User',            // User 컬렉션과의 관계 설정 (populate 시 사용)
+   *   required: true          // 필수 필드 (없으면 저장 실패)
+   * })
+   * 
+   * 💡 관계형 설정 설명:
+   * - ref: 'User' → users 컬렉션의 문서와 연결
+   * - 향후 populate()로 사용자 전체 정보 조회 가능
+   * - 예: post.populate('userId') → 사용자 nickname, email 등 조회
+   */
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  userId: Types.ObjectId;
+
+  /**
+   * 📝 게시글 제목
+   * 
+   * ⚙️ 필드 설정:
+   * - required: true → 필수 입력 필드
+   * - 타입: string
+   * 
+   * 💡 실제 저장 예시: "JWT 인증 게시글"
+   */
   @Prop({ required: true })
-  // title 필드를 문자열(string) 타입으로 선언합니다.
   title: string;
 
-  // @Prop() 데코레이터로 content 필드를 선언합니다.
+  /**
+   * 📄 게시글 내용
+   * 
+   * ⚙️ 필드 설정:
+   * - required: true → 필수 입력 필드
+   * - 타입: string
+   * 
+   * 💡 실제 저장 예시: "JWT 토큰을 사용해서 게시글을 작성했습니다!"
+   */
   @Prop({ required: true })
-  // content 필드를 문자열(string) 타입으로 선언합니다.
   content: string;
 
-  // @Prop() 데코레이터로 category 필드를 선언합니다.
+  /**
+   * 🏷️ 게시글 카테고리
+   * 
+   * ⚙️ 필드 설정:
+   * - required: true → 필수 입력 필드
+   * - 타입: string
+   * 
+   * 💡 실제 저장 예시: "일상", "질문", "공지", "기술" 등
+   * 
+   * 📋 향후 개선 방안:
+   * - enum으로 허용되는 카테고리 제한
+   * - 별도 Category 컬렉션으로 분리
+   */
   @Prop({ required: true })
-  // category 필드를 문자열(string) 타입으로 선언합니다. (예: 'daily', 'question')
   category: string;
 
-  // @Prop() 데코레이터로 authorNickname 필드를 선언합니다.
-  // 💡 중요: 현재는 인증 기능이 없으므로, 작성자 정보를 임시 닉네임(문자열)으로 받습니다.
-  // 2주차에 User 스키마와 연결할 때 이 부분은 아래와 같이 수정될 예정입니다.
-  // @Prop({ type: Types.ObjectId, ref: 'User', required: true })
-  // author: Types.ObjectId;
+  /**
+   * 👤 작성자 닉네임 (임시 필드)
+   * 
+   * 🔄 현재 상태:
+   * - JWT에서 추출한 username을 임시로 저장
+   * - 직접 입력이 아닌, 토큰에서 추출한 신뢰할 수 있는 값
+   * 
+   * 📋 향후 개선 계획:
+   * 1. User 스키마에 nickname 필드 추가
+   * 2. populate()로 실시간 nickname 조회
+   * 3. 이 필드는 제거하고 userId만 사용
+   * 
+   * 💡 현재 저장 예시: "testuser" (JWT의 username)
+   */
   @Prop({ required: true })
-  // authorNickname 필드를 문자열(string) 타입으로 선언합니다.
   authorNickname: string;
 
-  // @Prop() 데코레이터로 likeCount 필드를 선언합니다.
-  // default: 0 옵션은 데이터가 처음 생성될 때 이 필드의 기본값을 0으로 설정합니다.
+  /**
+   * 👍 좋아요 수
+   * 
+   * ⚙️ 필드 설정:
+   * - default: 0 → 게시글 생성 시 자동으로 0으로 설정
+   * - 타입: number
+   * 
+   * 🔄 관련 기능:
+   * - 향후 POST /posts/:id/like API 구현 예정
+   * - 증감 로직: { $inc: { likeCount: 1 } }
+   */
   @Prop({ default: 0 })
-  // likeCount 필드를 숫자(number) 타입으로 선언합니다.
   likeCount: number;
 
-  // @Prop() 데코레이터로 commentCount 필드를 선언합니다.
+  /**
+   * 💬 댓글 수
+   * 
+   * ⚙️ 필드 설정:
+   * - default: 0 → 게시글 생성 시 자동으로 0으로 설정
+   * - 타입: number
+   * 
+   * 🔄 관련 기능:
+   * - 향후 댓글 생성/삭제 시 자동 업데이트
+   * - Comment 스키마와 연동 예정
+   */
   @Prop({ default: 0 })
-  // commentCount 필드를 숫자(number) 타입으로 선언합니다.
   commentCount: number;
 
-  // (Mongoose가 자동으로 추가해 줄 필드들)
-  // createdAt: Date; // 데이터 생성 일자
-  // updatedAt: Date; // 데이터 수정 일자
+  /**
+   * 📅 자동 생성 필드들 (timestamps: true 옵션으로 자동 추가)
+   * 
+   * 🔄 Mongoose가 자동으로 관리:
+   * - createdAt: Date → 문서 생성 시점
+   * - updatedAt: Date → 문서 수정 시점
+   * 
+   * 💡 실제 사용 예시:
+   * - 게시글 목록에서 "5분 전", "1시간 전" 표시
+   * - 수정된 게시글 표시 (createdAt !== updatedAt)
+   */
 }
 
-// --- 타입 및 스키마 생성 ---
-
-// PostDocument 타입을 정의합니다.
-// 이는 HydratedDocument<Post>와 같으며, 데이터베이스에서 조회한 Post 문서 객체의 타입을 나타냅니다.
+/**
+ * 🔍 PostDocument 타입 정의
+ * 
+ * 💡 용도:
+ * - MongoDB에서 조회한 Post 문서의 완전한 타입
+ * - Mongoose가 제공하는 메서드들 포함 (save, remove, populate 등)
+ * - PostsService에서 반환 타입으로 사용
+ * 
+ * 🔄 HydratedDocument<Post>의 의미:
+ * - Post 스키마 + Mongoose 문서 메서드 + MongoDB 메타데이터
+ * - _id, __v, createdAt, updatedAt 등 자동 필드 포함
+ */
 export type PostDocument = HydratedDocument<Post>;
 
-// SchemaFactory.createForClass(Post)를 사용하여 Post 클래스로부터 Mongoose 스키마 객체를 생성합니다.
-// 이 스키마 객체는 posts.module.ts에서 MongooseModule에 등록하는 데 사용됩니다.
+/**
+ * 🏭 PostSchema 생성
+ * 
+ * 🔄 SchemaFactory.createForClass(Post) 동작:
+ * 1. Post 클래스의 @Prop 데코레이터 정보 수집
+ * 2. MongoDB 스키마 객체 생성
+ * 3. 인덱스, 제약조건, 미들웨어 등 설정 적용
+ * 
+ * 📊 생성된 스키마는 다음에서 사용:
+ * - posts.module.ts: MongooseModule.forFeature()에서 등록
+ * - MongoDB: 실제 컬렉션 구조 정의로 사용
+ * 
+ * 💡 향후 추가 가능한 설정:
+ * PostSchema.index({ title: 'text', content: 'text' }); // 텍스트 검색
+ * PostSchema.index({ userId: 1, createdAt: -1 });      // 사용자별 최신순
+ * PostSchema.index({ category: 1 });                   // 카테고리별 조회
+ */
 export const PostSchema = SchemaFactory.createForClass(Post);

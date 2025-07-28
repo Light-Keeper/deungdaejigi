@@ -18,8 +18,7 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api-docs', app, document); // 'api-docs' 경로에서 Swagger UI 접근 가능
   // --- Swagger 설정 끝 ---
-
-  await app.listen(process.env.PORT ?? 3000);
+ await app.listen(3000);
   console.log(`Application is running on: ${await app.getUrl()}`);
   console.log(`Swagger UI is available at: ${await app.getUrl()}/api-docs`);
   app.useGlobalPipes(
@@ -33,7 +32,7 @@ async function bootstrap() {
 
   SwaggerModule.setup('api-docs', app, document);
 
-  await app.listen(3000);
+ 
 }
 
 // bootstrap 함수를 호출하여 애플리케이션을 실행합니다.

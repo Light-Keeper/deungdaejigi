@@ -1,45 +1,229 @@
-// 필요 의존성 주입 코드
+// src/posts/posts.service.ts
 
-// 이 데코레이터는 클래스가 Nest.js의 의존성 주입(DI) 시스템에 의해 관리될 수 있음을 표시합니다.
-import { Injectable } from '@nestjs/common';
-// Mongoose를 사용하여 MongoDB와 상호작용하기 위한 의존성 주입
+/**
+ * 🏢 게시글 서비스 - 타입 에러 해결 버전
+ * 
+ * 🔧 수정 사항:
+ * - 별도 DTO 파일의 인터페이스 사용
+ * - FindAllResult → FindAllPostsResult
+ * - FindAllOptions → FindAllPostsOptions
+ * - 타입 안전성 보장
+ */
+
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-// 데이터베이스와 상호작용(생성, 조회, 수정, 삭제)하는 데 사용되는 객체의 타입입니다.
 import { Model } from 'mongoose';
-// Post 모델과 관련된 타입을 가져옵니다.
 import { Post, PostDocument } from './schemas/post.schema';
-// PostsService 클래스는 게시글과 관련된 비즈니스 로직을 처리합니다.
 import { CreatePostDto } from './dto/create-post.dto';
+import { 
+  FindAllPostsOptions, 
+  FindAllPostsResult 
+} from './dto/find-all-post.dto'; // 🆕 별도 파일에서 import
 
-// @Injectable() 데코레이터는 PostsService 클래스가 다른 곳(예: PostsController)에 주입될 수 있는 Provider임을 선언합니다.
+/**
+ * 🔍 게시글 생성 시 사용할 데이터 타입
+ */
+interface CreatePostWithAuth extends CreatePostDto {
+  userId: string;
+  authorNickname: string;
+}
+
 @Injectable()
-
-// 게시글과 관련된 핵심 비즈니스 로직을 이 클래스 안에서 처리합니다.
 export class PostsService {
-  /**
-   * PostsService 클래스의 생성자(constructor)입니다. 클래스의 인스턴스가 생성될 때 처음으로 호출됩니다.
-   * Nest.js의 의존성 주입 시스템이 이 생성자를 통해 필요한 의존성(여기서는 Post 모델)을 자동으로 주입해 줍니다.
-   * @param postModel - Mongoose 모델로, Post 스키마를 기반으로 MongoDB와 상호작용할 수 있게 해줍니다.
-   */
   constructor(@InjectModel(Post.name) private postModel: Model<PostDocument>) {}
 
-  // --- 비즈니스 로직 메소드 ---
-
   /**
-   * 'create'라는 이름의 비동기(async) 메소드를 정의합니다. 컨트롤러로부터 호출되어 실제 게시글 생성 로직을 수행합니다.
-   * createPostDto 매개변수는 클라이언트가 보낸 게시글 데이터를 담고 있으며, 타입은 CreatePostDto 입니다.
-   * 이 메소드는 Promise<Post>를 반환 타입으로 가집니다. 이는 비동기 작업이 완료된 후 Post 타입의 객체를 반환하겠다는 약속입니다.
-   * @param createPostDto dto - 게시글 생성에 필요한 데이터가 담긴 객체입니다.
-   * @returns Post - 생성된 게시글 객체를 반환합니다.
+   * 📝 게시글 생성 메서드 (기존과 동일)
    */
-  async create(createPostDto: CreatePostDto): Promise<Post> {
-    /*
-      new this.postModel(createPostDto) 코드는 주입받은 Post 모델을 사용해 새로운 문서(document) 인스턴스를 생성합니다.
-      DTO에 담겨온 데이터(제목, 내용 등)가 이 인스턴스에 채워집니다.
-    */
-    const createdPost = new this.postModel(createPostDto);
+  async create(data: CreatePostWithAuth): Promise<Post> {
+    const { userId, title, content, category, authorNickname } = data;
+
+    const createdPost = new this.postModel({
+      userId,
+      title,
+      content,
+      category,
+      authorNickname,
+      likeCount: 0,
+      commentCount: 0,
+    });
+
     return createdPost.save();
   }
 
-  // ... findAll, findById 등 다른 메소드들
+  /**
+   * 📋 게시글 목록 조회 메서드 (타입 에러 해결)
+   * 
+   * 🔧 개선 사항:
+   * - FindAllPostsOptions 타입 사용
+   * - FindAllPostsResult 반환 타입 명시
+   * - 타입 안전성 보장
+   * 
+   * @param options 조회 옵션 (페이지, 정렬, 필터 등)
+   * @returns Promise<FindAllPostsResult> 게시글 목록과 메타 정보
+   */
+  async findAll(options: FindAllPostsOptions): Promise<FindAllPostsResult> {
+    const { page, limit, category, sort } = options;
+
+    /**
+     * 🔍 MongoDB 쿼리 조건 생성
+     * 
+     * 💡 category가 undefined인 경우 처리
+     */
+    const filter: any = {};
+    if (category && category.trim() !== '') {
+      filter.category = category;
+    }
+
+    /**
+     * 📊 정렬 옵션 설정
+     * 
+     * 🔧 타입 안전한 정렬 처리
+     */
+    let sortOption: any = { createdAt: -1 }; // 기본값: 최신순
+
+    switch (sort) {
+      case 'popular':
+        // 인기순: 좋아요 수 + 댓글 수 + 최신순
+        sortOption = { 
+          likeCount: -1, 
+          commentCount: -1, 
+          createdAt: -1 
+        };
+        break;
+      
+      case 'oldest':
+        // 오래된 순: 생성일 오름차순
+        sortOption = { createdAt: 1 };
+        break;
+      
+      case 'latest':
+      default:
+        // 최신순: 생성일 내림차순 (기본값)
+        sortOption = { createdAt: -1 };
+        break;
+    }
+
+    /**
+     * 📊 페이지네이션 계산
+     * 
+     * 💡 안전한 계산 (음수 방지)
+     */
+    const skip = Math.max(0, (page - 1) * limit);
+
+    try {
+      /**
+       * 🚀 병렬 쿼리 실행
+       * 
+       * 💡 Promise.all로 성능 최적화
+       */
+      const [posts, totalCount] = await Promise.all([
+        // 📋 게시글 목록 조회
+        this.postModel
+          .find(filter)
+          .sort(sortOption)
+          .skip(skip)
+          .limit(limit)
+          .exec(),
+
+        // 🔢 전체 게시글 수 조회
+        this.postModel.countDocuments(filter).exec(),
+      ]);
+
+      /**
+       * 📊 메타 정보 계산 (안전한 계산)
+       */
+      const totalPages = Math.max(1, Math.ceil(totalCount / limit));
+      const currentPage = Math.min(page, totalPages); // 현재 페이지가 총 페이지를 초과하지 않도록
+      const hasNextPage = currentPage < totalPages;
+      const hasPrevPage = currentPage > 1;
+
+      /**
+       * 📦 타입 안전한 결과 반환
+       * 
+       * 💡 FindAllPostsResult 인터페이스와 정확히 매치
+       */
+      const result: FindAllPostsResult = {
+        posts,
+        totalCount,
+        totalPages,
+        currentPage,
+        hasNextPage,
+        hasPrevPage,
+      };
+
+      return result;
+
+    } catch (error) {
+      /**
+       * 🚨 에러 처리
+       * 
+       * 💡 MongoDB 쿼리 에러 시 로깅 후 재발생
+       */
+      console.error('게시글 조회 중 오류 발생:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 🔍 특정 게시글 조회 메서드 (기존과 동일)
+   */
+  async findOne(id: string): Promise<Post> {
+    try {
+      /**
+       * 🔍 게시글 조회
+       * 
+       * 💡 ObjectId 유효성은 MongoDB가 자동 처리
+       */
+      const post = await this.postModel.findById(id).exec();
+
+      /**
+       * 🚨 존재하지 않는 게시글 처리
+       */
+      if (!post) {
+        throw new NotFoundException(`ID가 ${id}인 게시글을 찾을 수 없습니다.`);
+      }
+
+      return post;
+
+    } catch (error) {
+      /**
+       * 🚨 에러 재처리
+       * 
+       * 💡 NotFoundException은 그대로 전달
+       * 다른 에러는 로깅 후 전달
+       */
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      
+      console.error('게시글 조회 중 오류 발생:', error);
+      throw new NotFoundException(`게시글 조회 중 오류가 발생했습니다.`);
+    }
+  }
+
+  /**
+   * 📊 추가 개선 사항 (주석으로 표시):
+   * 
+   * 🔍 검색 기능:
+   * async search(keyword: string, options: FindAllPostsOptions): Promise<FindAllPostsResult> {
+   *   const filter = {
+   *     $or: [
+   *       { title: { $regex: keyword, $options: 'i' } },
+   *       { content: { $regex: keyword, $options: 'i' } }
+   *     ]
+   *   };
+   *   // ... 검색 로직
+   * }
+   * 
+   * 📈 조회수 증가:
+   * async incrementView(id: string): Promise<void> {
+   *   await this.postModel.findByIdAndUpdate(id, { $inc: { viewCount: 1 } });
+   * }
+   * 
+   * 👥 작성자 정보 포함:
+   * async findWithAuthor(id: string): Promise<Post> {
+   *   return this.postModel.findById(id).populate('userId', 'username nickname').exec();
+   * }
+   */
 }

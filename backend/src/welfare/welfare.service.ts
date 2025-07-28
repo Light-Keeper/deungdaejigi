@@ -15,7 +15,6 @@ import { Helper } from 'src/utils/helper';
 @Injectable()
 export class WelfareService {
   private readonly logger = new Logger(WelfareService.name);
-  private readonly ENCODED_API_KEY: string;
   private readonly DECODED_API_KEY: string;
   private readonly DEFAULT_PAGE_SIZE: number;
 
@@ -35,10 +34,6 @@ export class WelfareService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
   ) {
-    this.ENCODED_API_KEY = this.configService.get<string>(
-      'ENCODED_PUBLIC_DATA_API_KEY',
-      '',
-    );
     this.DECODED_API_KEY = this.configService.get<string>(
       'DECODED_PUBLIC_DATA_API_KEY',
       '',
@@ -46,12 +41,6 @@ export class WelfareService {
     this.DEFAULT_PAGE_SIZE = 500;
 
     // 환경 변수가 제대로 로드되었는지 확인 (개발 단계에서 유용)
-    if (this.ENCODED_API_KEY === '') {
-      this.logger.error(
-        'ENCODED_PUBLIC_DATA_API_KEY 환경 변수가 설정되지 않았습니다.',
-      );
-      throw new Error('ENCODED_PUBLIC_DATA_API_KEY 환경 변수 누락');
-    }
     if (this.DECODED_API_KEY === '') {
       this.logger.error(
         'DECODED_PUBLIC_DATA_API_KEY 환경 변수가 설정되지 않았습니다.',
