@@ -11,6 +11,7 @@ import * as xml2js from 'xml2js';
 import { WelfareProviderType } from './enum/welfare-provider-type.enum';
 import { WelfareResponseCode } from './enum/welfare-response-code.enum';
 import { Helper } from 'src/utils/helper';
+import { json } from 'stream/consumers';
 
 @Injectable()
 export class WelfareService {
@@ -113,28 +114,28 @@ export class WelfareService {
 
       let apiData: any[] = [];
       let totalCount: number = 0;
+      let result;
+      let xmlString;
+      // xml2json 파서
+      const parser = new xml2js.Parser({
+        explicitArray: false, // 단일 태그가 배열이 아닌 단일 객체나 문자열로 파싱되도록 설정
+        mergeAttrs: true, // XML 속성(attributes)을 일반 요소와 병합
+      });
 
       switch (params.type) {
         // 중앙부처
         case WelfareProviderType.CENTRAL_MINISTRY:
-          const xmlString = response.data; // API 호출 결과
-
-          // xml2json 파서
-          const parser = new xml2js.Parser({
-            explicitArray: false, // 단일 태그가 배열이 아닌 단일 객체나 문자열로 파싱되도록 설정
-            mergeAttrs: true, // XML 속성(attributes)을 일반 요소와 병합
-          });
-
+          xmlString = response.data.trim(); // API 호출 결과
           // 파싱한 결과
-          const result = await parser.parseStringPromise(xmlString);
+          result = await parser.parseStringPromise(xmlString);
+          result = result.wantedList;
 
-          const wantedList = result.wantedList; // root 태그
-          if (!wantedList) {
-            throw new Error('Invalid XML response structure: Missing Root tag');
+          if (!result) {
+            throw new Error('[오류] 데이터가 없습니다!');
           }
 
-          apiData = wantedList.servList || []; // <servList> 데이터 배열, 없으면 빈 배열
-          totalCount = parseInt(wantedList.totalCount || '0', 10); // 총 데이터 개수
+          apiData = result.servList || []; // <servList> 데이터 배열, 없으면 빈 배열
+          totalCount = parseInt(result.totalCount || '0', 10); // 총 데이터 개수
 
           // <servList>가 하나만 있을 경우 xml2js는 배열이 아닌 단일 객체로 파싱할 수 있으므로 배열로 강제 변환
           if (!Array.isArray(apiData)) {
@@ -147,21 +148,65 @@ export class WelfareService {
           );
 
           // API 결과 코드 및 메시지 확인 (필요시)
-          if (wantedList.resultCode !== WelfareResponseCode.SUCCESS) {
+          if (result.resultCode !== WelfareResponseCode.SUCCESS) {
             this.logger.error(
-              `API 에러 발생: Code=${wantedList.resultCode}, Message=${wantedList.resultMessage}`,
+              `API 에러 발생: Code=${result.resultCode}, Message=${result.resultMessage}`,
             );
-            // throw new Error(`API error: ${wantedList.resultMessage}`); // 필요하다면 오류 throw
+            throw new Error(
+              `[API ERROR] ResultMessage: ${result.resultMessage}`,
+            ); // 필요하다면 오류 throw
           }
 
           break;
 
         // 지자체
         case WelfareProviderType.LOCAL_GOV:
-          break;
+          result = JSON.parse(response.data);
+          if (!result) {
+            throw new Error('[오류] 데이터가 없습니다!');
+          }
 
+          apiData = result.servList || []; // <servList> 데이터 배열, 없으면 빈 배열
+          totalCount = parseInt(result.totalCount || '0', 10); // 총 데이터 개수
+
+          // <servList>가 하나만 있을 경우 xml2js는 배열이 아닌 단일 객체로 파싱할 수 있으므로 배열로 강제 변환
+          if (!Array.isArray(apiData)) {
+            apiData = [apiData];
+          }
+
+          // 전체 데이터 개수, 불러온 데이터 개수
+          this.logger.debug(
+            `Parsed XML: totalCount=${totalCount}, itemsCount=${apiData.length}`,
+          );
+
+          // API 결과 코드 및 메시지 확인 (필요시)
+          if (result.resultCode !== WelfareResponseCode.SUCCESS) {
+            this.logger.error(
+              `API 에러 발생: Code=${result.resultCode}, Message=${result.resultMessage}`,
+            );
+            throw new Error(
+              `[API ERROR] ResultMessage: ${result.resultMessage}`,
+            ); // 필요하다면 오류 throw
+          }
+          break;
         // 민간단체
         case WelfareProviderType.PRIVATE_ORG:
+          result = JSON.parse(response.data);
+          // console.log(result, typeof result);
+          // console.log(result.data.length);
+          // console.log(result.totalCount);
+
+          totalCount = parseInt(result.totalCount || '0', 10);
+
+          apiData = [...result.data];
+          if (!Array.isArray(apiData)) {
+            apiData = [apiData];
+          }
+
+          // 전체 데이터 개수, 불러온 데이터 개수
+          this.logger.debug(
+            `Parsed XML: totalCount=${totalCount}, itemsCount=${apiData.length}`,
+          );
           break;
 
         default:
@@ -262,27 +307,67 @@ export class WelfareService {
     apiDataSourceType: string,
   ): Welfare {
     let transformedItem: Partial<Welfare> = {};
+    let sourceTypeName = {
+      CENTRAL_MINISTRY: '중앙부처',
+      LOCAL_GOV: '지자체',
+      PRIVATE_ORG: '민간',
+    };
 
     switch (apiDataSourceType) {
       case WelfareProviderType.CENTRAL_MINISTRY:
         transformedItem = {
-          sourceType: '중앙부처',
+          sourceType: sourceTypeName[apiDataSourceType],
           serviceName: rawData.servNm || undefined,
-          serviceId: rawData.servId || undefined,
+          serviceId: rawData.servId,
           description: rawData.servDgst || undefined,
           provider: rawData.jurMnofNm + ' ' + rawData.jurOrgNm || undefined,
-          contact: rawData.rprsCtadr || undefined,
           serviceURL: rawData.servDtlLink || undefined,
           serviceCategory:
             Helper.splitStringToArray(rawData.intrsThemaArray, ',') ||
             undefined,
-          lastUpdated: rawData.svcfrstRegTs || undefined,
-          // classificationStatus: 'needs_review',
+          contact: rawData.rprsCtadr || undefined,
+          supportCycleName: rawData.sprtCycNm || undefined,
+          serviceProvisionName: rawData.srvPvsnNm || undefined,
         };
         break;
       case WelfareProviderType.LOCAL_GOV:
+        transformedItem = {
+          sourceType: sourceTypeName[apiDataSourceType],
+          serviceName: rawData.servNm || undefined,
+          serviceId: rawData.servId,
+          description: rawData.servDgst || undefined,
+          provider: rawData.bizChrDeptNm || undefined,
+          serviceURL: rawData.servDtlLink || undefined,
+          serviceCategory:
+            Helper.splitStringToArray(rawData.intrsThemaArray, ',') ||
+            undefined,
+          supportCycleName: rawData.sprtCycNm || undefined,
+          serviceProvisionName: rawData.srvPvsnNm || undefined,
+          serviceAreaName: rawData.sggNm || undefined,
+          cityProvinceName: rawData.ctpvNm || undefined,
+          targetAudience: Helper.splitStringToArray(
+            rawData.trgterIndvdlNmArray,
+            ',',
+          ),
+          applicationMethod: rawData.aplyMtdNm || undefined,
+        };
         break;
       case WelfareProviderType.PRIVATE_ORG:
+        transformedItem = {
+          sourceType: sourceTypeName[apiDataSourceType],
+          serviceName: rawData.사업명 || undefined,
+          serviceId: Helper.generateShortHashId('PRIORG', rawData.사업명),
+          description: rawData.지원내용 || undefined,
+          applicationMethod: rawData.신청방법 || undefined,
+          provider: rawData.기관명 || undefined,
+          serviceCategory:
+            Helper.splitStringToArray(rawData.관심주제, ',') || undefined,
+          targetAudience: rawData.가구상황 || undefined,
+          businessStartDate: rawData.사업시작일 || undefined,
+          businessEndDate: rawData.사업종료일 || undefined,
+          requiredDocs: rawData.제출서류 || undefined,
+        };
+
         break;
       default:
         this.logger.warn(
@@ -308,9 +393,7 @@ export class WelfareService {
    */
   async saveWelfareData(welfareData: Welfare[]): Promise<void> {
     if (!welfareData || welfareData.length === 0) {
-      this.logger.log(
-        '저장할 복지 정보 데이터가 없습니다. 작업을 건너_ㅂ니다.',
-      );
+      this.logger.log('저장할 복지 정보 데이터가 없습니다. 작업을 건넙니다.');
       return;
     }
 
@@ -377,17 +460,25 @@ export class WelfareService {
           srchKeyCode: '003',
         }, // API별 요청 파라미터
       },
-      // {
-      //   type: WelfareProviderType.PRIVATE_ORG,
-      //   endpoint: 'https://www.data.go.kr/data/15042631/openapi.do', // 민간단체 복지 API 실제 URL (복지로 공통 API일 경우)
-      //   params: { serviceKey: 'YOUR_PRIVATE_API_KEY_HERE', callTp: 'L', srchKeyCode: '001' }, // 민간단체 고유 파라미터
-      // },
-      // {
-      //   type: WelfareProviderType.LOCAL_GOV,
-      //   endpoint: 'https://www.data.go.kr/data/15042631/openapi.do', // 지자체 복지 API 실제 URL (복지로 공통 API일 경우)
-      //   // 지자체 API는 파라미터가 다를 수 있으므로, 실제 API 명세에 맞춰 조정
-      //   params: { serviceKey: 'YOUR_LOCAL_API_KEY_HERE', callTp: 'L', srchKeyCode: '002', areaCode: '11000' },
-      // }
+      {
+        type: WelfareProviderType.PRIVATE_ORG,
+        endpoint: this.PRIVATE_ORGANIZATION_WELFARE_API_URL, // 민간단체 복지 API 실제 URL (복지로 공통 API일 경우)
+        params: {
+          serviceKey: this.configService.get<string>(
+            'DECODED_PUBLIC_DATA_API_KEY',
+          ),
+        }, // 민간단체 고유 파라미터
+      },
+      {
+        type: WelfareProviderType.LOCAL_GOV,
+        endpoint: this.LOCAL_GOVERNMENT_WELFARE_URL, // 지자체 복지 API 실제 URL (복지로 공통 API일 경우)
+        // 지자체 API는 파라미터가 다를 수 있으므로, 실제 API 명세에 맞춰 조정
+        params: {
+          serviceKey: this.configService.get<string>(
+            'DECODED_PUBLIC_DATA_API_KEY',
+          ),
+        },
+      },
     ];
 
     // 각 API 설정에 따라 동기화 프로세스를 순차적으로 실행합니다.
