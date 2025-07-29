@@ -5,7 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
 import { TestModule } from '../test/test.module';
-import { WelfareModule } from './welfare/welfare.module';
+import { WelfareModule } from './welfare/welfare.module'; // 복지 정보 api 모듈
 import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -33,7 +33,7 @@ import { PostsModule } from './posts/posts.module'; // 게시글 api 모듈 추�
     }),
     // --- 2. imports 배열에 TestModule을 추가합니다. ---
     TestModule,
-    WelfareModule,
+    WelfareModule, // 복지 정보 api 모듈
     AuthModule,
     UsersModule,
     MoodDiaryModule, // 마음일기 모듈 추가
