@@ -1,12 +1,18 @@
-import { Injectable, Logger } from '@nestjs/common';
+// src/welfare/welfare.service.ts (import 경로 수정)
+
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { InjectModel, raw } from '@nestjs/mongoose';
+import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Welfare, WelfareDocument } from './schemas/welfare.schema';
+import { 
+  SearchWelfareOptions, 
+  SearchWelfareResult 
+} from './dto/welfare.dto'; // 🔧 경로 수정: search-welfare.dto → welfare.dto
 import { firstValueFrom, catchError } from 'rxjs';
-import { all, AxiosError } from 'axios';
+import { AxiosError } from 'axios';
 import * as xml2js from 'xml2js';
 import { WelfareProviderType } from './enum/welfare-provider-type.enum';
 import { WelfareResponseCode } from './enum/welfare-response-code.enum';
@@ -16,17 +22,14 @@ import { json } from 'stream/consumers';
 @Injectable()
 export class WelfareService {
   private readonly logger = new Logger(WelfareService.name);
-  private readonly ENCODED_API_KEY: string;
   private readonly DECODED_API_KEY: string;
   private readonly DEFAULT_PAGE_SIZE: number;
 
-  // 중앙부처 복지서비스 정보 API
+  // API URLs
   private readonly CENTRAL_MINISTRY_WELFARE_URL =
     'https://apis.data.go.kr/B554287/NationalWelfareInformationsV001/NationalWelfarelistV001';
-  // 지자체 복지서비스 정보 API
   private readonly LOCAL_GOVERNMENT_WELFARE_URL =
     'https://apis.data.go.kr/B554287/LocalGovernmentWelfareInformations/LcgvWelfarelist';
-  // 민간기관 복지서비스 정보 API
   private readonly PRIVATE_ORGANIZATION_WELFARE_API_URL =
     'https://api.odcloud.kr/api/15116392/v1/uddi:e42c15c4-d478-4210-922f-fb32233dc8f6';
 
@@ -36,52 +39,190 @@ export class WelfareService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
   ) {
-    this.ENCODED_API_KEY = this.configService.get<string>(
-      'ENCODED_PUBLIC_DATA_API_KEY',
-      '',
-    );
-    this.DECODED_API_KEY = this.configService.get<string>(
-      'DECODED_PUBLIC_DATA_API_KEY',
-      '',
-    );
+    this.DECODED_API_KEY = this.configService.get<string>('DECODED_PUBLIC_DATA_API_KEY', '');
     this.DEFAULT_PAGE_SIZE = 500;
 
-    // 환경 변수가 제대로 로드되었는지 확인 (개발 단계에서 유용)
-    if (this.ENCODED_API_KEY === '') {
-      this.logger.error(
-        'ENCODED_PUBLIC_DATA_API_KEY 환경 변수가 설정되지 않았습니다.',
-      );
-      throw new Error('ENCODED_PUBLIC_DATA_API_KEY 환경 변수 누락');
-    }
     if (this.DECODED_API_KEY === '') {
-      this.logger.error(
-        'DECODED_PUBLIC_DATA_API_KEY 환경 변수가 설정되지 않았습니다.',
-      );
+      this.logger.error('DECODED_PUBLIC_DATA_API_KEY 환경 변수가 설정되지 않았습니다.');
       throw new Error('DECODED_PUBLIC_DATA_API_KEY 환경 변수 누락');
     }
   }
 
-  // 매월 1일 자정에 실행되는 크론 작업
+  /**
+   * 복지 정보 검색 및 필터링
+   */
+  async searchWelfares(options: SearchWelfareOptions): Promise<SearchWelfareResult> {
+    const { keyword, page, limit, sourceType, serviceCategory, targetAudience, lifeCycle, provider, sort } = options;
+
+    // MongoDB 쿼리 조건 생성
+    const filter: any = {};
+
+    // 키워드 검색 (복지명, 설명에서 검색)
+    if (keyword && keyword.trim() !== '') {
+      filter.$or = [
+        { serviceName: { $regex: keyword, $options: 'i' } },
+        { description: { $regex: keyword, $options: 'i' } },
+        { provider: { $regex: keyword, $options: 'i' } },
+      ];
+    }
+
+    // 필터 조건들
+    if (sourceType) filter.sourceType = sourceType;
+    if (provider) filter.provider = { $regex: provider, $options: 'i' };
+    
+    // 배열 필드 필터링
+    if (serviceCategory) filter.serviceCategory = { $in: [serviceCategory] };
+    if (targetAudience) filter.targetAudience = { $in: [targetAudience] };
+    if (lifeCycle) filter.lifeCycle = { $in: [lifeCycle] };
+
+    // 정렬 옵션 설정
+    let sortOption: any = { lastUpdated: -1 }; // 기본: 최신순
+    switch (sort) {
+      case 'name':
+        sortOption = { serviceName: 1 }; // 이름순
+        break;
+      case 'provider':
+        sortOption = { provider: 1, serviceName: 1 }; // 제공자순
+        break;
+      case 'latest':
+      default:
+        sortOption = { lastUpdated: -1 }; // 최신순
+        break;
+    }
+
+    // 페이지네이션 계산
+    const skip = Math.max(0, (page - 1) * limit);
+
+    try {
+      // 병렬 쿼리 실행
+      const [welfares, totalCount] = await Promise.all([
+        this.welfareModel
+          .find(filter)
+          .sort(sortOption)
+          .skip(skip)
+          .limit(limit)
+          .select('-__v') // __v 필드 제외
+          .exec(),
+        this.welfareModel.countDocuments(filter).exec(),
+      ]);
+
+      // 페이지 정보 계산
+      const totalPages = Math.max(1, Math.ceil(totalCount / limit));
+      const currentPage = Math.min(page, totalPages);
+      const hasNextPage = currentPage < totalPages;
+      const hasPrevPage = currentPage > 1;
+
+      return {
+        welfares,
+        totalCount,
+        totalPages,
+        currentPage,
+        hasNextPage,
+        hasPrevPage,
+      };
+    } catch (error) {
+      this.logger.error(`복지 정보 검색 중 오류 발생: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * 특정 복지 정보 상세 조회
+   */
+  async findOne(id: string): Promise<Welfare> {
+    try {
+      const welfare = await this.welfareModel.findById(id).select('-__v').exec();
+      
+      if (!welfare) {
+        throw new NotFoundException(`ID가 ${id}인 복지 정보를 찾을 수 없습니다.`);
+      }
+
+      return welfare;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      this.logger.error(`복지 정보 조회 중 오류 발생: ${error.message}`, error.stack);
+      throw new NotFoundException(`복지 정보 조회 중 오류가 발생했습니다.`);
+    }
+  }
+
+  /**
+   * 필터 옵션들 조회 (드롭다운용)
+   */
+  async getFilterOptions() {
+    try {
+      const [sourceTypes, serviceCategories, targetAudiences, lifeCycles, providers] = await Promise.all([
+        // 제공기관 목록
+        this.welfareModel.distinct('sourceType').exec(),
+        
+        // 서비스 분야 목록 (배열 필드 flatten)
+        this.welfareModel.aggregate([
+          { $unwind: '$serviceCategory' },
+          { $group: { _id: '$serviceCategory', count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+        ]).exec(),
+        
+        // 지원 대상 목록
+        this.welfareModel.aggregate([
+          { $unwind: '$targetAudience' },
+          { $group: { _id: '$targetAudience', count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+        ]).exec(),
+        
+        // 생애 주기 목록
+        this.welfareModel.aggregate([
+          { $unwind: '$lifeCycle' },
+          { $group: { _id: '$lifeCycle', count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+        ]).exec(),
+        
+        // 제공자 목록
+        this.welfareModel.aggregate([
+          { $group: { _id: '$provider', count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+          { $limit: 50 }, // 상위 50개만
+        ]).exec(),
+      ]);
+
+      return {
+        sourceTypes: sourceTypes.filter(type => type), // null/undefined 제거
+        serviceCategories: serviceCategories.map(item => ({
+          name: item._id,
+          count: item.count,
+        })).filter(item => item.name), // null/undefined 제거
+        targetAudiences: targetAudiences.map(item => ({
+          name: item._id,
+          count: item.count,
+        })).filter(item => item.name),
+        lifeCycles: lifeCycles.map(item => ({
+          name: item._id,
+          count: item.count,
+        })).filter(item => item.name),
+        providers: providers.map(item => ({
+          name: item._id,
+          count: item.count,
+        })).filter(item => item.name),
+      };
+    } catch (error) {
+      this.logger.error(`필터 옵션 조회 중 오류 발생: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  // === 기존 동기화 관련 메서드들 (그대로 유지) ===
+  
   @Cron(CronExpression.EVERY_1ST_DAY_OF_MONTH_AT_MIDNIGHT)
   async handleCron() {
     this.logger.log('매월 1일 복지 정보 데이터 동기화를 시작합니다...');
-
     try {
-      // 공공데이터포털에서 복지 정보 데이터를 가져옵니다.
-
+      await this.syncAllWelfareData();
       console.log('복지 정보 데이터 동기화가 완료되었습니다.');
     } catch (error) {
       console.error('복지 정보 동기화 중 에러 발생:', error);
     }
   }
 
-  // 1. 외부 복지 정보 API를 불러오고 파싱한다.
-  /**
-   * 이 함수는 각 API를 JSON으로 파싱하고 { rawData: any[], totalCount: number } 형태를 반환합니다.
-   * @param url 접근할 API URL
-   * @param params 요청 시 사용할 파라미터
-   * @returns
-   */
   private async callExternalApiAndParse(
     url: string,
     params: Record<string, any>,
@@ -99,11 +240,10 @@ export class WelfareService {
       // API 요청
       const response = await firstValueFrom(
         this.httpService
-          .get(url, { params, responseType: 'text' }) // 응답 타입을 문자열로
+          .get(url, { params, responseType: 'text' })
           .pipe(
             catchError((error: AxiosError) => {
               this.logger.error(`API 호출 실패: ${error.message} for ${url}`);
-              // 실제 API 오류 응답이 XML일 수도 있으니, error.response.data도 파싱 고려
               this.logger.error(
                 `Error details: ${error.response?.data || error.message}`,
               );
@@ -123,8 +263,8 @@ export class WelfareService {
       });
 
       switch (params.type) {
-        // 중앙부처
         case WelfareProviderType.CENTRAL_MINISTRY:
+<<<<<<< HEAD
           xmlString = response.data.trim(); // API 호출 결과
           // 파싱한 결과
           result = await parser.parseStringPromise(xmlString);
@@ -136,36 +276,56 @@ export class WelfareService {
 
           apiData = result.servList || []; // <servList> 데이터 배열, 없으면 빈 배열
           totalCount = parseInt(result.totalCount || '0', 10); // 총 데이터 개수
+=======
+          const xmlString = response.data;
+          const parser = new xml2js.Parser({
+            explicitArray: false,
+            mergeAttrs: true,
+          });
 
-          // <servList>가 하나만 있을 경우 xml2js는 배열이 아닌 단일 객체로 파싱할 수 있으므로 배열로 강제 변환
+          const result = await parser.parseStringPromise(xmlString);
+          const wantedList = result.wantedList;
+          if (!wantedList) {
+            throw new Error('Invalid XML response structure: Missing Root tag');
+          }
+
+          apiData = wantedList.servList || [];
+          totalCount = parseInt(wantedList.totalCount || '0', 10);
+>>>>>>> 36d39c8679770bdea99544f9778f028295ff5385
+
           if (!Array.isArray(apiData)) {
             apiData = [apiData];
           }
 
-          // 전체 데이터 개수, 불러온 데이터 개수
           this.logger.debug(
             `Parsed XML: totalCount=${totalCount}, itemsCount=${apiData.length}`,
           );
 
+<<<<<<< HEAD
           // API 결과 코드 및 메시지 확인 (필요시)
           if (result.resultCode !== WelfareResponseCode.SUCCESS) {
+=======
+          if (wantedList.resultCode !== WelfareResponseCode.SUCCESS) {
+>>>>>>> 36d39c8679770bdea99544f9778f028295ff5385
             this.logger.error(
               `API 에러 발생: Code=${result.resultCode}, Message=${result.resultMessage}`,
             );
+<<<<<<< HEAD
             throw new Error(
               `[API ERROR] ResultMessage: ${result.resultMessage}`,
             ); // 필요하다면 오류 throw
+=======
+>>>>>>> 36d39c8679770bdea99544f9778f028295ff5385
           }
-
           break;
 
-        // 지자체
         case WelfareProviderType.LOCAL_GOV:
           result = JSON.parse(response.data);
           if (!result) {
             throw new Error('[오류] 데이터가 없습니다!');
           }
 
+<<<<<<< HEAD
           apiData = result.servList || []; // <servList> 데이터 배열, 없으면 빈 배열
           totalCount = parseInt(result.totalCount || '0', 10); // 총 데이터 개수
 
@@ -190,6 +350,8 @@ export class WelfareService {
           }
           break;
         // 민간단체
+=======
+>>>>>>> 36d39c8679770bdea99544f9778f028295ff5385
         case WelfareProviderType.PRIVATE_ORG:
           result = JSON.parse(response.data);
           // console.log(result, typeof result);
@@ -215,7 +377,6 @@ export class WelfareService {
           );
       }
 
-      // API 호출 결과 반환
       return { rawData: apiData, totalCount: totalCount };
     } catch (error) {
       this.logger.error(
@@ -225,37 +386,27 @@ export class WelfareService {
     }
   }
 
-  /**
-   * 특정 외부 API에서 모든 복지 데이터를 페이지네이션을 통해 가져옵니다.
-   * `fetchedCount`가 `totalCount`에 도달할 때까지 반복하여 모든 데이터를 수집합니다.
-   *
-   * @param apiEndpoint - 외부 API 엔드포인트 URL
-   * @param initialParams - API 호출 시 필요한 초기 고정 파라미터 (예: API 키, type: ApiType)
-   * @param pageSize - 한 페이지에 불러올 데이터 개수 (기본 500)
-   * @returns {Promise<any[]>} 모든 복지 서비스 원본 데이터를 담은 배열 (JSON 객체 형태)
-   */
   private async fetchAllWelfareRawData(
     apiEndpoint: string,
     initialParams: Record<string, any>,
     pageSize: number = this.DEFAULT_PAGE_SIZE,
   ): Promise<any[]> {
     this.logger.log(`${apiEndpoint}의 데이터를 가져옵니다.`);
-    let allCollectedRawData: any[] = []; // 가져온 전체 원본 데이터 배열
-    let currentPage = 1; // 현재 페이지
-    let totalCount = 0; // 전체 데이터 개수
-    let fetchedCount = 0; // 가져온 원본 데이터 개수
+    let allCollectedRawData: any[] = [];
+    let currentPage = 1;
+    let totalCount = 0;
+    let fetchedCount = 0;
 
     do {
       try {
         const params = {
-          ...initialParams, // API 키, 고정 파라미터
-          pageNo: currentPage, // API 별 파라미터 이름 차이 대응
+          ...initialParams,
+          pageNo: currentPage,
           page: currentPage,
           numOfRows: pageSize,
           perPage: pageSize,
         };
 
-        // rawData와 totalCount를 각각 currentBatchRawData와 currentTotalCount에 할당한다.
         const { rawData: currentBatchRawData, totalCount: currentTotalCount } =
           await this.callExternalApiAndParse(apiEndpoint, params);
 
@@ -263,16 +414,15 @@ export class WelfareService {
           totalCount = currentTotalCount;
           if (totalCount === 0) {
             this.logger.log(
-              `[${apiEndpoint}] 총 데이터가 0개입니다. 동기화를 종료합니다. `,
+              `[${apiEndpoint}] 총 데이터가 0개입니다. 동기화를 종료합니다.`,
             );
             break;
           }
           this.logger.log(
-            `[${apiEndpoint}] 총 ${totalCount}개의 데이터가 확인되었습니다. `,
+            `[${apiEndpoint}] 총 ${totalCount}개의 데이터가 확인되었습니다.`,
           );
         }
 
-        // 현재 페이지에 데이터가 없거나 더이상 없는 경우
         if (!currentBatchRawData || currentBatchRawData.length === 0) {
           this.logger.warn(
             `[${apiEndpoint}] 페이지 ${currentPage}에 데이터가 없거나 더 이상 데이터가 없습니다. 반복을 종료합니다.`,
@@ -280,8 +430,8 @@ export class WelfareService {
           break;
         }
 
-        allCollectedRawData = allCollectedRawData.concat(currentBatchRawData); // 원본 데이터 추가
-        fetchedCount += currentBatchRawData.length; // 수집된 데이터 개수 업데이트
+        allCollectedRawData = allCollectedRawData.concat(currentBatchRawData);
+        fetchedCount += currentBatchRawData.length;
 
         this.logger.log(
           `[${apiEndpoint}] 페이지 ${currentPage}에서 ${currentBatchRawData.length}개 수집. 현재까지 ${fetchedCount}개 / ${totalCount}개`,
@@ -292,7 +442,7 @@ export class WelfareService {
         this.logger.error(
           `[${apiEndpoint}] 데이터 수집 중 치명적인 오류 (페이지 ${currentPage}): ${error.message}.`,
         );
-        throw error; // 오류 발생 시 전체 프로세스 중단
+        throw error;
       }
     } while (fetchedCount < totalCount);
 
@@ -325,9 +475,13 @@ export class WelfareService {
           serviceCategory:
             Helper.splitStringToArray(rawData.intrsThemaArray, ',') ||
             undefined,
+<<<<<<< HEAD
           contact: rawData.rprsCtadr || undefined,
           supportCycleName: rawData.sprtCycNm || undefined,
           serviceProvisionName: rawData.srvPvsnNm || undefined,
+=======
+          lastUpdated: rawData.svcfrstRegTs || undefined,
+>>>>>>> 36d39c8679770bdea99544f9778f028295ff5385
         };
         break;
       case WelfareProviderType.LOCAL_GOV:
@@ -384,16 +538,15 @@ export class WelfareService {
     return transformedItem as Welfare;
   }
 
-  /**
-   * 변환된 복지 데이터 배열을 MongoDB에 저장하거나 업데이트합니다.
-   * `serviceId`를 기준으로 기존 문서를 업데이트하고, 없으면 새로 삽입(upsert)합니다.
-   *
-   * @param welfareData - 저장할 Welfare 스키마 형태의 데이터 배열
-   * @returns {Promise<void>} 저장 작업 완료 시 반환
-   */
   async saveWelfareData(welfareData: Welfare[]): Promise<void> {
     if (!welfareData || welfareData.length === 0) {
+<<<<<<< HEAD
       this.logger.log('저장할 복지 정보 데이터가 없습니다. 작업을 건넙니다.');
+=======
+      this.logger.log(
+        '저장할 복지 정보 데이터가 없습니다. 작업을 건너뜁니다.',
+      );
+>>>>>>> 36d39c8679770bdea99544f9778f028295ff5385
       return;
     }
 
@@ -401,17 +554,15 @@ export class WelfareService {
       `데이터베이스에 ${welfareData.length}개의 복지 정보를 저장(업데이트/삽입)합니다.`,
     );
 
-    // bulkWrite 작업을 위한 요청 배열 생성
     const bulkOps = welfareData.map((item) => ({
       updateOne: {
-        filter: { serviceId: item.serviceId }, // `serviceId` 필드를 기준으로 문서를 찾습니다.
-        update: { $set: item }, // 찾은 문서를 `item`의 전체 내용으로 업데이트합니다.
-        upsert: true, // `filter` 조건에 맞는 문서가 없으면, `item` 데이터를 새 문서로 삽입합니다.
+        filter: { serviceId: item.serviceId },
+        update: { $set: item },
+        upsert: true,
       },
     }));
 
     try {
-      // bulkWrite를 실행하여 여러 쓰기 작업을 한 번에 처리합니다.
       const result = await this.welfareModel.bulkWrite(bulkOps);
 
       this.logger.log(`데이터베이스 일괄 쓰기(bulkWrite) 완료:
@@ -435,31 +586,22 @@ export class WelfareService {
     }
   }
 
-  /**
-   * 모든 외부 복지 API에서 데이터를 가져와 DB에 동기화하는 메인 함수입니다.
-   *
-   * @description
-   * 1. 각 API 설정에 따라 데이터를 가져옵니다 (XML -> JSON 파싱 포함).
-   * 2. 가져온 원본 데이터를 내부 Welfare 스키마에 맞게 재구조화하고 변환합니다.
-   * 3. 변환된 데이터를 MongoDB에 upsert(업데이트 또는 삽입) 방식으로 저장합니다.
-   * 각 API별로 오류 발생 시 전체 동기화가 중단되지 않고 다음 API로 넘어갈 수 있도록 처리합니다.
-   */
   async syncAllWelfareData(): Promise<void> {
     this.logger.log('===== 복지 데이터 동기화 시작 =====');
 
-    // 동기화할 각 외부 API의 설정 정보를 배열로 정의합니다.
     const apiConfigs = [
       {
-        type: WelfareProviderType.CENTRAL_MINISTRY, // 열거형으로 정의된 API 유형
-        endpoint: this.CENTRAL_MINISTRY_WELFARE_URL, // 중앙부처 복지 API 실제 URL
+        type: WelfareProviderType.CENTRAL_MINISTRY,
+        endpoint: this.CENTRAL_MINISTRY_WELFARE_URL,
         params: {
           serviceKey: this.configService.get<string>(
             'DECODED_PUBLIC_DATA_API_KEY',
           ),
           callTp: 'L',
           srchKeyCode: '003',
-        }, // API별 요청 파라미터
+        },
       },
+<<<<<<< HEAD
       {
         type: WelfareProviderType.PRIVATE_ORG,
         endpoint: this.PRIVATE_ORGANIZATION_WELFARE_API_URL, // 민간단체 복지 API 실제 URL (복지로 공통 API일 경우)
@@ -479,16 +621,14 @@ export class WelfareService {
           ),
         },
       },
+=======
+>>>>>>> 36d39c8679770bdea99544f9778f028295ff5385
     ];
 
-    // 각 API 설정에 따라 동기화 프로세스를 순차적으로 실행합니다.
     for (const config of apiConfigs) {
       try {
         this.logger.log(`--- 동기화 대상: [${config.type}] API ---`);
 
-        // 1. **데이터 가져오기 (Raw JSON):**
-        //    해당 API의 모든 페이지에 걸친 원본 데이터를 가져옵니다.
-        //    params에 ApiType을 추가하여 callExternalApiAndParse에서 파싱 로직을 분기하도록 합니다.
         const rawData = await this.fetchAllWelfareRawData(config.endpoint, {
           ...config.params,
           type: config.type,
@@ -497,9 +637,6 @@ export class WelfareService {
           `[${config.type}] 총 ${rawData.length}개의 원본 데이터 수집 완료.`,
         );
 
-        // 2. **데이터 재구조화 (Welfare 스키마로 변환):**
-        //    가져온 원본 데이터를 내부 Welfare 스키마에 맞게 변환하고,
-        //    serviceCategory 분류 및 기타 데이터 정규화 작업을 수행합니다.
         const transformedData = rawData.map((item) =>
           this.transformRawDataToWelfare(item, config.type),
         );
@@ -507,14 +644,9 @@ export class WelfareService {
           `[${config.type}] 총 ${transformedData.length}개의 데이터 변환 완료.`,
         );
 
-        // 3. **데이터 저장 (DB에 Upsert):**
-        //    변환된 데이터를 MongoDB에 upsert(업데이트 또는 삽입) 방식으로 저장합니다.
-        //    이 단계에서 bulkWrite를 사용하여 효율성을 높입니다.
         await this.saveWelfareData(transformedData);
         this.logger.log(`[${config.type}] 데이터베이스 저장 완료.`);
       } catch (error) {
-        // 특정 API 동기화 중 오류가 발생하더라도 전체 프로세스가 중단되지 않도록
-        // 여기에서 에러를 catch하고 로깅한 후 다음 API로 넘어갑니다.
         this.logger.error(
           `[${config.type}] 데이터 동기화 실패: ${error.message}`,
           error.stack,

@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'; // Swagger 관련 모듈 임포트
+import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -17,9 +18,22 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api-docs', app, document); // 'api-docs' 경로에서 Swagger UI 접근 가능
   // --- Swagger 설정 끝 ---
-
-  await app.listen(process.env.PORT ?? 3000);
+ await app.listen(3000);
   console.log(`Application is running on: ${await app.getUrl()}`);
   console.log(`Swagger UI is available at: ${await app.getUrl()}/api-docs`);
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true, // DTO에 정의되지 않은 속성은 자동으로 제거합니다.
+      forbidNonWhitelisted: true, // DTO에 정의되지 않은 속성이 들어오면 에러를 발생시킵니다.
+      transform: true, // 요청 데이터를 DTO 타입으로 자동 변환해줍니다.
+    }),
+  );
+
+
+  SwaggerModule.setup('api-docs', app, document);
+
+ 
 }
+
+// bootstrap 함수를 호출하여 애플리케이션을 실행합니다.
 bootstrap();
