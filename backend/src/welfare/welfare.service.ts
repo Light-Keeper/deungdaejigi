@@ -7,10 +7,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Welfare, WelfareDocument } from './schemas/welfare.schema';
-import { 
-  SearchWelfareOptions, 
-  SearchWelfareResult 
-} from './dto/welfare.dto'; // 🔧 경로 수정: search-welfare.dto → welfare.dto
+import { SearchWelfareOptions, SearchWelfareResult } from './dto/welfare.dto'; // 🔧 경로 수정: search-welfare.dto → welfare.dto
 import { firstValueFrom, catchError } from 'rxjs';
 import { AxiosError } from 'axios';
 import * as xml2js from 'xml2js';
@@ -39,11 +36,16 @@ export class WelfareService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
   ) {
-    this.DECODED_API_KEY = this.configService.get<string>('DECODED_PUBLIC_DATA_API_KEY', '');
+    this.DECODED_API_KEY = this.configService.get<string>(
+      'DECODED_PUBLIC_DATA_API_KEY',
+      '',
+    );
     this.DEFAULT_PAGE_SIZE = 500;
 
     if (this.DECODED_API_KEY === '') {
-      this.logger.error('DECODED_PUBLIC_DATA_API_KEY 환경 변수가 설정되지 않았습니다.');
+      this.logger.error(
+        'DECODED_PUBLIC_DATA_API_KEY 환경 변수가 설정되지 않았습니다.',
+      );
       throw new Error('DECODED_PUBLIC_DATA_API_KEY 환경 변수 누락');
     }
   }
@@ -51,8 +53,20 @@ export class WelfareService {
   /**
    * 복지 정보 검색 및 필터링
    */
-  async searchWelfares(options: SearchWelfareOptions): Promise<SearchWelfareResult> {
-    const { keyword, page, limit, sourceType, serviceCategory, targetAudience, lifeCycle, provider, sort } = options;
+  async searchWelfares(
+    options: SearchWelfareOptions,
+  ): Promise<SearchWelfareResult> {
+    const {
+      keyword,
+      page,
+      limit,
+      sourceType,
+      serviceCategory,
+      targetAudience,
+      lifeCycle,
+      provider,
+      sort,
+    } = options;
 
     // MongoDB 쿼리 조건 생성
     const filter: any = {};
@@ -69,7 +83,7 @@ export class WelfareService {
     // 필터 조건들
     if (sourceType) filter.sourceType = sourceType;
     if (provider) filter.provider = { $regex: provider, $options: 'i' };
-    
+
     // 배열 필드 필터링
     if (serviceCategory) filter.serviceCategory = { $in: [serviceCategory] };
     if (targetAudience) filter.targetAudience = { $in: [targetAudience] };
@@ -121,7 +135,10 @@ export class WelfareService {
         hasPrevPage,
       };
     } catch (error) {
-      this.logger.error(`복지 정보 검색 중 오류 발생: ${error.message}`, error.stack);
+      this.logger.error(
+        `복지 정보 검색 중 오류 발생: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
@@ -131,10 +148,15 @@ export class WelfareService {
    */
   async findOne(id: string): Promise<Welfare> {
     try {
-      const welfare = await this.welfareModel.findById(id).select('-__v').exec();
-      
+      const welfare = await this.welfareModel
+        .findById(id)
+        .select('-__v')
+        .exec();
+
       if (!welfare) {
-        throw new NotFoundException(`ID가 ${id}인 복지 정보를 찾을 수 없습니다.`);
+        throw new NotFoundException(
+          `ID가 ${id}인 복지 정보를 찾을 수 없습니다.`,
+        );
       }
 
       return welfare;
@@ -142,7 +164,10 @@ export class WelfareService {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      this.logger.error(`복지 정보 조회 중 오류 발생: ${error.message}`, error.stack);
+      this.logger.error(
+        `복지 정보 조회 중 오류 발생: ${error.message}`,
+        error.stack,
+      );
       throw new NotFoundException(`복지 정보 조회 중 오류가 발생했습니다.`);
     }
   }
@@ -152,66 +177,91 @@ export class WelfareService {
    */
   async getFilterOptions() {
     try {
-      const [sourceTypes, serviceCategories, targetAudiences, lifeCycles, providers] = await Promise.all([
+      const [
+        sourceTypes,
+        serviceCategories,
+        targetAudiences,
+        lifeCycles,
+        providers,
+      ] = await Promise.all([
         // 제공기관 목록
         this.welfareModel.distinct('sourceType').exec(),
-        
+
         // 서비스 분야 목록 (배열 필드 flatten)
-        this.welfareModel.aggregate([
-          { $unwind: '$serviceCategory' },
-          { $group: { _id: '$serviceCategory', count: { $sum: 1 } } },
-          { $sort: { count: -1 } },
-        ]).exec(),
-        
+        this.welfareModel
+          .aggregate([
+            { $unwind: '$serviceCategory' },
+            { $group: { _id: '$serviceCategory', count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+          ])
+          .exec(),
+
         // 지원 대상 목록
-        this.welfareModel.aggregate([
-          { $unwind: '$targetAudience' },
-          { $group: { _id: '$targetAudience', count: { $sum: 1 } } },
-          { $sort: { count: -1 } },
-        ]).exec(),
-        
+        this.welfareModel
+          .aggregate([
+            { $unwind: '$targetAudience' },
+            { $group: { _id: '$targetAudience', count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+          ])
+          .exec(),
+
         // 생애 주기 목록
-        this.welfareModel.aggregate([
-          { $unwind: '$lifeCycle' },
-          { $group: { _id: '$lifeCycle', count: { $sum: 1 } } },
-          { $sort: { count: -1 } },
-        ]).exec(),
-        
+        this.welfareModel
+          .aggregate([
+            { $unwind: '$lifeCycle' },
+            { $group: { _id: '$lifeCycle', count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+          ])
+          .exec(),
+
         // 제공자 목록
-        this.welfareModel.aggregate([
-          { $group: { _id: '$provider', count: { $sum: 1 } } },
-          { $sort: { count: -1 } },
-          { $limit: 50 }, // 상위 50개만
-        ]).exec(),
+        this.welfareModel
+          .aggregate([
+            { $group: { _id: '$provider', count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+            { $limit: 50 }, // 상위 50개만
+          ])
+          .exec(),
       ]);
 
       return {
-        sourceTypes: sourceTypes.filter(type => type), // null/undefined 제거
-        serviceCategories: serviceCategories.map(item => ({
-          name: item._id,
-          count: item.count,
-        })).filter(item => item.name), // null/undefined 제거
-        targetAudiences: targetAudiences.map(item => ({
-          name: item._id,
-          count: item.count,
-        })).filter(item => item.name),
-        lifeCycles: lifeCycles.map(item => ({
-          name: item._id,
-          count: item.count,
-        })).filter(item => item.name),
-        providers: providers.map(item => ({
-          name: item._id,
-          count: item.count,
-        })).filter(item => item.name),
+        sourceTypes: sourceTypes.filter((type) => type), // null/undefined 제거
+        serviceCategories: serviceCategories
+          .map((item) => ({
+            name: item._id,
+            count: item.count,
+          }))
+          .filter((item) => item.name), // null/undefined 제거
+        targetAudiences: targetAudiences
+          .map((item) => ({
+            name: item._id,
+            count: item.count,
+          }))
+          .filter((item) => item.name),
+        lifeCycles: lifeCycles
+          .map((item) => ({
+            name: item._id,
+            count: item.count,
+          }))
+          .filter((item) => item.name),
+        providers: providers
+          .map((item) => ({
+            name: item._id,
+            count: item.count,
+          }))
+          .filter((item) => item.name),
       };
     } catch (error) {
-      this.logger.error(`필터 옵션 조회 중 오류 발생: ${error.message}`, error.stack);
+      this.logger.error(
+        `필터 옵션 조회 중 오류 발생: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
 
   // === 기존 동기화 관련 메서드들 (그대로 유지) ===
-  
+
   @Cron(CronExpression.EVERY_1ST_DAY_OF_MONTH_AT_MIDNIGHT)
   async handleCron() {
     this.logger.log('매월 1일 복지 정보 데이터 동기화를 시작합니다...');
@@ -239,17 +289,15 @@ export class WelfareService {
 
       // API 요청
       const response = await firstValueFrom(
-        this.httpService
-          .get(url, { params, responseType: 'text' })
-          .pipe(
-            catchError((error: AxiosError) => {
-              this.logger.error(`API 호출 실패: ${error.message} for ${url}`);
-              this.logger.error(
-                `Error details: ${error.response?.data || error.message}`,
-              );
-              throw new Error(`External API call failed: ${error.message}`);
-            }),
-          ),
+        this.httpService.get(url, { params, responseType: 'text' }).pipe(
+          catchError((error: AxiosError) => {
+            this.logger.error(`API 호출 실패: ${error.message} for ${url}`);
+            this.logger.error(
+              `Error details: ${error.response?.data || error.message}`,
+            );
+            throw new Error(`External API call failed: ${error.message}`);
+          }),
+        ),
       );
 
       let apiData: any[] = [];
@@ -264,7 +312,6 @@ export class WelfareService {
 
       switch (params.type) {
         case WelfareProviderType.CENTRAL_MINISTRY:
-<<<<<<< HEAD
           xmlString = response.data.trim(); // API 호출 결과
           // 파싱한 결과
           result = await parser.parseStringPromise(xmlString);
@@ -276,22 +323,6 @@ export class WelfareService {
 
           apiData = result.servList || []; // <servList> 데이터 배열, 없으면 빈 배열
           totalCount = parseInt(result.totalCount || '0', 10); // 총 데이터 개수
-=======
-          const xmlString = response.data;
-          const parser = new xml2js.Parser({
-            explicitArray: false,
-            mergeAttrs: true,
-          });
-
-          const result = await parser.parseStringPromise(xmlString);
-          const wantedList = result.wantedList;
-          if (!wantedList) {
-            throw new Error('Invalid XML response structure: Missing Root tag');
-          }
-
-          apiData = wantedList.servList || [];
-          totalCount = parseInt(wantedList.totalCount || '0', 10);
->>>>>>> 36d39c8679770bdea99544f9778f028295ff5385
 
           if (!Array.isArray(apiData)) {
             apiData = [apiData];
@@ -301,21 +332,14 @@ export class WelfareService {
             `Parsed XML: totalCount=${totalCount}, itemsCount=${apiData.length}`,
           );
 
-<<<<<<< HEAD
           // API 결과 코드 및 메시지 확인 (필요시)
           if (result.resultCode !== WelfareResponseCode.SUCCESS) {
-=======
-          if (wantedList.resultCode !== WelfareResponseCode.SUCCESS) {
->>>>>>> 36d39c8679770bdea99544f9778f028295ff5385
             this.logger.error(
               `API 에러 발생: Code=${result.resultCode}, Message=${result.resultMessage}`,
             );
-<<<<<<< HEAD
             throw new Error(
               `[API ERROR] ResultMessage: ${result.resultMessage}`,
             ); // 필요하다면 오류 throw
-=======
->>>>>>> 36d39c8679770bdea99544f9778f028295ff5385
           }
           break;
 
@@ -325,7 +349,6 @@ export class WelfareService {
             throw new Error('[오류] 데이터가 없습니다!');
           }
 
-<<<<<<< HEAD
           apiData = result.servList || []; // <servList> 데이터 배열, 없으면 빈 배열
           totalCount = parseInt(result.totalCount || '0', 10); // 총 데이터 개수
 
@@ -350,8 +373,6 @@ export class WelfareService {
           }
           break;
         // 민간단체
-=======
->>>>>>> 36d39c8679770bdea99544f9778f028295ff5385
         case WelfareProviderType.PRIVATE_ORG:
           result = JSON.parse(response.data);
           // console.log(result, typeof result);
@@ -475,13 +496,9 @@ export class WelfareService {
           serviceCategory:
             Helper.splitStringToArray(rawData.intrsThemaArray, ',') ||
             undefined,
-<<<<<<< HEAD
           contact: rawData.rprsCtadr || undefined,
           supportCycleName: rawData.sprtCycNm || undefined,
           serviceProvisionName: rawData.srvPvsnNm || undefined,
-=======
-          lastUpdated: rawData.svcfrstRegTs || undefined,
->>>>>>> 36d39c8679770bdea99544f9778f028295ff5385
         };
         break;
       case WelfareProviderType.LOCAL_GOV:
@@ -540,13 +557,7 @@ export class WelfareService {
 
   async saveWelfareData(welfareData: Welfare[]): Promise<void> {
     if (!welfareData || welfareData.length === 0) {
-<<<<<<< HEAD
       this.logger.log('저장할 복지 정보 데이터가 없습니다. 작업을 건넙니다.');
-=======
-      this.logger.log(
-        '저장할 복지 정보 데이터가 없습니다. 작업을 건너뜁니다.',
-      );
->>>>>>> 36d39c8679770bdea99544f9778f028295ff5385
       return;
     }
 
@@ -601,7 +612,6 @@ export class WelfareService {
           srchKeyCode: '003',
         },
       },
-<<<<<<< HEAD
       {
         type: WelfareProviderType.PRIVATE_ORG,
         endpoint: this.PRIVATE_ORGANIZATION_WELFARE_API_URL, // 민간단체 복지 API 실제 URL (복지로 공통 API일 경우)
@@ -621,8 +631,6 @@ export class WelfareService {
           ),
         },
       },
-=======
->>>>>>> 36d39c8679770bdea99544f9778f028295ff5385
     ];
 
     for (const config of apiConfigs) {
